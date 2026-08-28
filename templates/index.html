@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NSE Hourly Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0B0E14;
+    --panel: #12151F;
+    --panel-2: #171B27;
+    --border: #232838;
+    --text: #E7E9F0;
+    --muted: #8890A6;
+    --faint: #565D74;
+    --gold: #E8B54C;
+    --gain: #2DD4A7;
+    --loss: #FF5C7A;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 10% -10%, #161B2C 0%, var(--ink) 55%);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    min-height: 100vh;
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 22px 28px 20px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--gain);
+    box-shadow: 0 0 0 3px rgba(45,212,167,0.15);
+    animation: pulse 2.4s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  @media (prefers-reduced-motion: reduce) { .brand .dot { animation: none; } }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 3px rgba(45,212,167,0.15); }
+    50% { opacity: 0.55; box-shadow: 0 0 0 6px rgba(45,212,167,0.06); }
+  }
+  header h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 21px;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  header .tagline {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  header .source-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--faint);
+    letter-spacing: 0.02em;
+  }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 70px; }
+
+  /* ---------- Controls ---------- */
+  .controls {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 22px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+  .controls label { font-size: 12px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .controls select, .controls input[type="date"] {
+    padding: 7px 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .controls select:focus, .controls input:focus, .controls button:focus {
+    outline: 2px solid var(--gold);
+    outline-offset: 1px;
+  }
+  .controls .today-btn {
+    padding: 7px 16px;
+    background: var(--gold);
+    color: #16130A;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  .controls .today-btn:hover { filter: brightness(1.08); }
+  .controls .viewing-note {
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: auto;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* ---------- Stock cards ---------- */
+  .stock-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+  .stock-header {
+    padding: 12px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  }
+  .stock-header .symbol {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+  }
+  .stock-header .status {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .stock-header .status.error { color: var(--loss); }
+
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; }
+  th, td {
+    padding: 9px 12px;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    background: rgba(255,255,255,0.02);
+    color: var(--faint);
+    font-weight: 500;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .hour-cell { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .hour-rail {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--gold);
+    flex-shrink: 0;
+  }
+
+  .move { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; }
+  .move.up { color: var(--gain); }
+  .move.down { color: var(--loss); }
+  .move.flat { color: var(--muted); }
+
+  .vol-cell { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+  .vol-bar-track { width: 64px; height: 5px; background: var(--panel-2); border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+  .vol-bar-fill { height: 100%; background: var(--gold); opacity: 0.75; border-radius: 3px; }
+  .vol-num { min-width: 66px; text-align: right; }
+
+  .empty-msg {
+    padding: 26px 16px;
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 11px;
+    color: var(--faint);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="brand">
+      <span class="dot" aria-hidden="true"></span>
+      <h1>NSE Hourly Dashboard</h1>
+    </div>
+    <p class="tagline">One row per hour · updates only on real volume/delivery change · refreshed every 5 min</p>
+  </div>
+  <div class="source-tag">SOURCE: NSEINDIA.COM · TIMEZONE: IST</div>
+</header>
+
+<main>
+  <div class="controls">
+    <label for="dateSelect">Viewing date</label>
+    <select id="dateSelect"></select>
+    <input type="date" id="datePicker">
+    <button class="today-btn" id="todayBtn">Today</button>
+    <span class="viewing-note" id="viewingNote"></span>
+  </div>
+
+  <div id="cardsContainer"><!-- filled by JS --></div>
+</main>
+
+<footer>Data source: nseindia.com · Live day auto-refreshes every 30s · All hours shown in IST</footer>
+
+<script>
+const SYMBOLS = {{ symbols | tojson }};
+const container = document.getElementById('cardsContainer');
+const dateSelect = document.getElementById('dateSelect');
+const datePicker = document.getElementById('datePicker');
+const todayBtn = document.getElementById('todayBtn');
+const viewingNote = document.getElementById('viewingNote');
+
+// "Today" must be computed in IST, not the visitor's local timezone —
+// otherwise someone browsing from outside India could see the wrong
+// date highlighted as "today" near midnight IST.
+function todayStrIST() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const get = (t) => parts.find(p => p.type === t).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+function hourLabel(h) {
+  const n = Number(h);
+  const period = n < 12 ? 'AM' : 'PM';
+  const display = n % 12 === 0 ? 12 : n % 12;
+  return `${display}:00 ${period}`;
+}
+
+let currentDate = todayStrIST();
+let autoRefreshTimer = null;
+
+function fmtNum(n) {
+  if (n === null || n === undefined || n === 'None') return '—';
+  return Number(n).toLocaleString('en-IN');
+}
+
+function renderStock(symbol, info) {
+  const card = document.createElement('div');
+  card.className = 'stock-card';
+
+  const statusText = info.last_error
+    ? `Error: ${info.last_error}`
+    : (info.last_success ? `Updated ${info.last_success}` : 'Waiting for first data…');
+  const statusClass = info.last_error ? 'status error' : 'status';
+
+  let tableHtml = '<div class="empty-msg">No data for this date.</div>';
+  if (info.rows && info.rows.length > 0) {
+    const maxVol = Math.max(...info.rows.map(r => Number(r.total_traded_volume) || 0), 1);
+
+    const rowsHtml = info.rows.map(r => {
+      const open = Number(r.hour_open);
+      const close = Number(r.hour_close);
+      let moveClass = 'flat', arrow = '→';
+      if (!isNaN(open) && !isNaN(close)) {
+        if (close > open) { moveClass = 'up'; arrow = '↑'; }
+        else if (close < open) { moveClass = 'down'; arrow = '↓'; }
+      }
+      const volPct = Math.min(100, Math.round((Number(r.total_traded_volume) || 0) / maxVol * 100));
+
+      return `
+      <tr>
+        <td><span class="hour-cell"><span class="hour-rail"></span>${hourLabel(r.hour)}</span></td>
+        <td>${r.hour_open ?? '—'}</td>
+        <td><span class="move ${moveClass}">${arrow} ${r.hour_close ?? '—'}</span></td>
+        <td>
+          <span class="vol-cell">
+            <span class="vol-bar-track"><span class="vol-bar-fill" style="width:${volPct}%"></span></span>
+            <span class="vol-num">${fmtNum(r.total_traded_volume)}</span>
+          </span>
+        </td>
+        <td>${fmtNum(r.quantity_traded)}</td>
+        <td>${fmtNum(r.deliverable_quantity)}</td>
+        <td>${fmtNum(r.buy_quantity)}</td>
+        <td>${fmtNum(r.sell_quantity)}</td>
+        <td>${(r.last_updated || '—').replace(' IST', '')}</td>
+      </tr>
+    `;
+    }).join('');
+
+    tableHtml = `
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Hour</th><th>Open</th><th>Close</th><th>Volume</th>
+            <th>Qty Traded</th><th>Deliverable Qty</th><th>Buy Qty</th><th>Sell Qty</th><th>Updated (IST)</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      </div>
+    `;
+  }
+
+  card.innerHTML = `
+    <div class="stock-header">
+      <span class="symbol">${symbol}</span>
+      <span class="${statusClass}">${statusText}</span>
+    </div>
+    ${tableHtml}
+  `;
+  return card;
+}
+
+async function loadDateOptions() {
+  try {
+    const resp = await fetch('/api/dates');
+    const data = await resp.json();
+    const dates = data.dates || [];
+    const today = todayStrIST();
+    if (!dates.includes(today)) dates.unshift(today);
+
+    dateSelect.innerHTML = dates.map(d =>
+      `<option value="${d}" ${d === currentDate ? 'selected' : ''}>${d}${d === today ? ' (today)' : ''}</option>`
+    ).join('');
+  } catch (err) {
+    console.error('Failed to load date list:', err);
+  }
+}
+
+async function refresh() {
+  try {
+    const resp = await fetch(`/api/data?date=${currentDate}`);
+    const data = await resp.json();
+    container.innerHTML = '';
+    SYMBOLS.forEach(symbol => {
+      const info = (data.symbols && data.symbols[symbol]) || {rows: [], last_success: null, last_error: null};
+      container.appendChild(renderStock(symbol, info));
+    });
+
+    const isToday = currentDate === todayStrIST();
+    viewingNote.textContent = isToday ? '● LIVE — AUTO-REFRESHING' : `HISTORY — ${currentDate}`;
+  } catch (err) {
+    console.error('Failed to refresh dashboard:', err);
+  }
+}
+
+function setDate(newDate) {
+  currentDate = newDate;
+  dateSelect.value = newDate;
+  datePicker.value = newDate;
+  refresh();
+  manageAutoRefresh();
+}
+
+function manageAutoRefresh() {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  if (currentDate === todayStrIST()) {
+    autoRefreshTimer = setInterval(refresh, 30000);
+  }
+}
+
+dateSelect.addEventListener('change', (e) => setDate(e.target.value));
+datePicker.addEventListener('change', (e) => { if (e.target.value) setDate(e.target.value); });
+todayBtn.addEventListener('click', () => setDate(todayStrIST()));
+
+// Init
+datePicker.value = currentDate;
+datePicker.max = todayStrIST();
+loadDateOptions().then(refresh).then(manageAutoRefresh);
+</script>
+
+</body>
+</html>
