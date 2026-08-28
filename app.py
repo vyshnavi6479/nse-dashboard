@@ -33,11 +33,26 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
+
+# All "which hour is this" and "which date is this" decisions must use
+# Indian time, not the server's system clock. Render's containers run in
+# UTC, and IST is UTC+5:30 — using datetime.now() (naive/UTC) instead of
+# datetime.now(IST) caused hour labels to be off by 5-6 hours from real
+# NSE market time (e.g. a row would be mislabeled "hour 5" when it was
+# really recorded around 10:30 AM IST). Every "now" used for a label or
+# for bucketing data by hour/date must go through now_ist().
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def now_ist() -> datetime:
+    return datetime.now(IST)
+
 
 DEFAULT_STOCKS = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN"]
 BASE_URL = "https://www.nseindia.com"
@@ -118,7 +133,7 @@ def extract_hour_row(data: dict, existing_hour_row: dict | None) -> dict:
     order_book = eq.get("orderBook", {})
 
     last_price = trade.get("lastPrice")
-    now = datetime.now()
+    now = now_ist()
 
     if existing_hour_row is not None:
         hour_open = existing_hour_row.get("hour_open")
@@ -143,7 +158,7 @@ def extract_hour_row(data: dict, existing_hour_row: dict | None) -> dict:
         "sell_quantity": order_book.get("totalSellQuantity"),
         "cum_total_volume": total_traded_volume,
         "cum_delivery_volume": deliverable_quantity,
-        "last_updated": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "last_updated": now.strftime("%Y-%m-%d %H:%M:%S IST"),
     }
 
 
@@ -221,7 +236,7 @@ def poll_loop(symbols: list[str]):
         return session_holder[0]
 
     while True:
-        now = datetime.now()
+        now = now_ist()
         date_str = now.strftime("%Y-%m-%d")
         hour_str = str(now.hour)
 
@@ -235,7 +250,7 @@ def poll_loop(symbols: list[str]):
                     upsert_row(symbol, date_str, hour_str, row)
 
                 with _status_lock:
-                    _status[symbol]["last_success"] = now.strftime("%Y-%m-%d %H:%M:%S")
+                    _status[symbol]["last_success"] = now.strftime("%Y-%m-%d %H:%M:%S IST")
                     _status[symbol]["last_error"] = None
 
             except requests.HTTPError as e:
@@ -280,7 +295,7 @@ def index():
 
 @app.route("/api/data")
 def api_data():
-    date_str = request.args.get("date") or datetime.now().strftime("%Y-%m-%d")
+    date_str = request.args.get("date") or now_ist().strftime("%Y-%m-%d")
     result = {}
     with _status_lock:
         status_snapshot = {s: dict(_status[s]) for s in DEFAULT_STOCKS}
