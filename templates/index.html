@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NSE Hourly Dashboard</title>
+<style>
+  :root { --purple: #3B2E7E; --bg: #F4F5F9; --border: #E2E2EA; --text-muted: #666; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: var(--bg); color: #1a1a1a; }
+  header { background: var(--purple); color: white; padding: 18px 28px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; font-size: 12px; opacity: 0.85; }
+  main { max-width: 1100px; margin: 0 auto; padding: 22px 16px 60px; }
+
+  .controls {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+    background: white; border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;
+  }
+  .controls label { font-size: 13px; color: var(--text-muted); }
+  .controls select, .controls input[type="date"] {
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;
+  }
+  .controls .today-btn {
+    padding: 7px 14px; background: var(--purple); color: white; border: none;
+    border-radius: 6px; font-size: 13px; cursor: pointer;
+  }
+  .controls .today-btn:hover { opacity: 0.9; }
+  .controls .viewing-note { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+
+  .stock-card { background: white; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+  .stock-header { background: var(--purple); color: white; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; }
+  .stock-header .symbol { font-weight: bold; font-size: 15px; }
+  .stock-header .status { font-size: 11px; opacity: 0.85; }
+  .stock-header .status.error { color: #ffb3b3; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: #FAFAFC; color: var(--text-muted); font-weight: 600; position: sticky; top: 0; }
+  .table-scroll { overflow-x: auto; }
+  .empty-msg { padding: 20px 16px; font-size: 13px; color: var(--text-muted); text-align: center; }
+  footer { text-align: center; padding: 16px; font-size: 11px; color: #999; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>NSE Hourly Dashboard</h1>
+  <p>One row per hour · updates only on real volume/delivery change · refreshed from NSE every 5 min</p>
+</header>
+
+<main>
+  <div class="controls">
+    <label for="dateSelect">Viewing date:</label>
+    <select id="dateSelect"></select>
+    <input type="date" id="datePicker">
+    <button class="today-btn" id="todayBtn">Today</button>
+    <span class="viewing-note" id="viewingNote"></span>
+  </div>
+
+  <div id="cardsContainer"><!-- filled by JS --></div>
+</main>
+
+<footer>Data source: nseindia.com · Live day auto-refreshes every 30s</footer>
+
+<script>
+const SYMBOLS = {{ symbols | tojson }};
+const container = document.getElementById('cardsContainer');
+const dateSelect = document.getElementById('dateSelect');
+const datePicker = document.getElementById('datePicker');
+const todayBtn = document.getElementById('todayBtn');
+const viewingNote = document.getElementById('viewingNote');
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+let currentDate = todayStr();
+let autoRefreshTimer = null;
+
+function fmtNum(n) {
+  if (n === null || n === undefined || n === 'None') return '—';
+  return Number(n).toLocaleString('en-IN');
+}
+
+function renderStock(symbol, info) {
+  const card = document.createElement('div');
+  card.className = 'stock-card';
+
+  const statusText = info.last_error
+    ? `Error: ${info.last_error}`
+    : (info.last_success ? `Last updated ${info.last_success}` : 'Waiting for first data...');
+  const statusClass = info.last_error ? 'status error' : 'status';
+
+  let tableHtml = '<div class="empty-msg">No data for this date.</div>';
+  if (info.rows && info.rows.length > 0) {
+    const rowsHtml = info.rows.map(r => `
+      <tr>
+        <td>${r.hour}</td>
+        <td>${r.hour_open ?? '—'}</td>
+        <td>${r.hour_close ?? '—'}</td>
+        <td>${fmtNum(r.total_traded_volume)}</td>
+        <td>${fmtNum(r.quantity_traded)}</td>
+        <td>${fmtNum(r.deliverable_quantity)}</td>
+        <td>${fmtNum(r.buy_quantity)}</td>
+        <td>${fmtNum(r.sell_quantity)}</td>
+        <td>${r.last_updated}</td>
+      </tr>
+    `).join('');
+    tableHtml = `
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Hour</th><th>Open</th><th>Close</th><th>Volume</th>
+            <th>Qty Traded</th><th>Deliverable Qty</th><th>Buy Qty</th><th>Sell Qty</th><th>Last Updated</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      </div>
+    `;
+  }
+
+  card.innerHTML = `
+    <div class="stock-header">
+      <span class="symbol">${symbol}</span>
+      <span class="${statusClass}">${statusText}</span>
+    </div>
+    ${tableHtml}
+  `;
+  return card;
+}
+
+async function loadDateOptions() {
+  try {
+    const resp = await fetch('/api/dates');
+    const data = await resp.json();
+    const dates = data.dates || [];
+    const today = todayStr();
+    if (!dates.includes(today)) dates.unshift(today);
+
+    dateSelect.innerHTML = dates.map(d =>
+      `<option value="${d}" ${d === currentDate ? 'selected' : ''}>${d}${d === today ? ' (today)' : ''}</option>`
+    ).join('');
+  } catch (err) {
+    console.error('Failed to load date list:', err);
+  }
+}
+
+async function refresh() {
+  try {
+    const resp = await fetch(`/api/data?date=${currentDate}`);
+    const data = await resp.json();
+    container.innerHTML = '';
+    SYMBOLS.forEach(symbol => {
+      const info = (data.symbols && data.symbols[symbol]) || {rows: [], last_success: null, last_error: null};
+      container.appendChild(renderStock(symbol, info));
+    });
+
+    const isToday = currentDate === todayStr();
+    viewingNote.textContent = isToday ? 'Live — auto-refreshing' : `Viewing history for ${currentDate}`;
+  } catch (err) {
+    console.error('Failed to refresh dashboard:', err);
+  }
+}
+
+function setDate(newDate) {
+  currentDate = newDate;
+  dateSelect.value = newDate;
+  datePicker.value = newDate;
+  refresh();
+  manageAutoRefresh();
+}
+
+function manageAutoRefresh() {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  // Only auto-refresh when viewing today — no point re-polling a fixed
+  // historical date every 30s since it won't change.
+  if (currentDate === todayStr()) {
+    autoRefreshTimer = setInterval(refresh, 30000);
+  }
+}
+
+dateSelect.addEventListener('change', (e) => setDate(e.target.value));
+datePicker.addEventListener('change', (e) => { if (e.target.value) setDate(e.target.value); });
+todayBtn.addEventListener('click', () => setDate(todayStr()));
+
+// Init
+datePicker.value = currentDate;
+datePicker.max = todayStr(); // can't pick a future date
+loadDateOptions().then(refresh).then(manageAutoRefresh);
+</script>
+
+</body>
+</html>
